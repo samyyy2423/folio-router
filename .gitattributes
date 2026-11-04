@@ -1,0 +1,2 @@
+# Moth files keep LF line endings everywhere, so `moth tidy --check` sees them as they are
+* text=auto eol=lf
