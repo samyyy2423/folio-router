@@ -1,0 +1,159 @@
+# router.moth's tests: moth test router.test.moth --allow-read
+
+use "router.moth" as router
+
+# a request as server.moth makes one
+to request with method, path
+    return record with method method, path path, query empty dictionary, headers empty dictionary, body ""
+end
+
+to home with r
+    return "home"
+end
+
+to show_note with r
+    return "note " + item "id" of r's params
+end
+
+to new_note with r
+    return "new note form"
+end
+
+to add_note with r
+    return "added"
+end
+
+to show_doc with r
+    return "doc " + item "page" of r's params
+end
+
+to show_pair with r
+    return item "a" of r's params + "+" + item "b" of r's params
+end
+
+to made_routes
+    set routes to router's routes()
+    router's get(routes, "/", home)
+    router's get(routes, "/notes/:id", show_note)
+    router's get(routes, "/notes/new", new_note)
+    router's post(routes, "/notes", add_note)
+    router's get(routes, "/docs/*page", show_doc)
+    router's get(routes, "/pair/:a/:b", show_pair)
+    return routes
+end
+
+to asked with routes, method, path
+    return router's answer(routes, request(method, path))
+end
+
+to test_paths_and_params
+    set routes to made_routes()
+    expect asked(routes, "GET", "/") is "home"
+    expect asked(routes, "GET", "/notes/42") is "note 42"
+    expect asked(routes, "GET", "/notes/42/") is "note 42" # a / at the end is the same
+    expect asked(routes, "GET", "/pair/x/y") is "x+y"
+    expect asked(routes, "get", "/notes/7") is "note 7" # the method in any case
+    expect asked(routes, "GET", "/notes/7?sort=new") is "note 7" # a query isn't part of the path
+end
+
+to test_the_most_particular_route_is_used
+    set routes to made_routes()
+    expect asked(routes, "GET", "/notes/new") is "new note form" # added after /notes/:id, and used first
+    set more to router's routes()
+    router's get(more, "/a/*rest", function with r gives "rest " + item "rest" of r's params)
+    router's get(more, "/a/:one", function with r gives "one " + item "one" of r's params)
+    router's get(more, "/a/b", function with r gives "b")
+    expect asked(more, "GET", "/a/b") is "b"
+    expect asked(more, "GET", "/a/c") is "one c"
+    expect asked(more, "GET", "/a/c/d") is "rest c/d"
+end
+
+to test_the_rest_of_a_path
+    set routes to made_routes()
+    expect asked(routes, "GET", "/docs/guide/start.md") is "doc guide/start.md"
+    expect asked(routes, "GET", "/docs/one") is "doc one"
+    expect asked(routes, "GET", "/docs")'s status is 404 # the rest needs something
+end
+
+to test_decoding
+    set routes to made_routes()
+    expect asked(routes, "GET", "/notes/two%20words") is "note two words"
+    expect asked(routes, "GET", "/notes/caf%C3%A9") is "note café"
+    expect asked(routes, "GET", "/notes/100%") is "note 100%"
+end
+
+to test_not_found_and_wrong_methods
+    set routes to made_routes()
+    set missing to asked(routes, "GET", "/nowhere")
+    expect missing's status is 404
+    expect missing's body is "There's nothing at /nowhere"
+    set wrong to asked(routes, "DELETE", "/notes")
+    expect wrong's status is 405
+    expect item "Allow" of wrong's headers is "POST"
+    set wrong_too to asked(routes, "POST", "/notes/3")
+    expect item "Allow" of wrong_too's headers is "GET, HEAD"
+    expect asked(routes, "HEAD", "/notes/3") is "note 3" # HEAD is answered by GET
+    router's not_found(routes, function with r gives "no page " + r's path)
+    expect asked(routes, "GET", "/nowhere") is "no page /nowhere"
+end
+
+to test_any_method_and_others
+    set routes to router's routes()
+    router's route(routes, "*", "/echo", function with r gives r's method)
+    router's put(routes, "/p", function with r gives "put")
+    router's patch(routes, "/p", function with r gives "patch")
+    router's delete(routes, "/p", function with r gives "delete")
+    router's route(routes, "options", "/p", function with r gives "options")
+    expect asked(routes, "PURGE", "/echo") is "PURGE"
+    expect asked(routes, "PUT", "/p") is "put"
+    expect asked(routes, "PATCH", "/p") is "patch"
+    expect asked(routes, "DELETE", "/p") is "delete"
+    expect asked(routes, "OPTIONS", "/p") is "options"
+end
+
+to test_checks_before
+    set routes to made_routes()
+    router's before(routes, function with r gives router_test_login(r))
+    expect asked(routes, "GET", "/notes/1") is "note 1"
+    set locked to router's answer(routes, record with method "GET", path "/notes/1", query empty dictionary,
+        headers (dictionary where "x-locked" is "yes"), body "")
+    expect locked's status is 303
+    expect item "Location" of locked's headers is "/login"
+    expect asked(routes, "GET", "/nowhere")'s status is 404 # checks run only for a route
+end
+
+to router_test_login with r
+    if "x-locked" is in r's headers
+        return router's redirect("/login")
+    end
+    return nothing
+end
+
+to test_answers
+    expect router's redirect("/") is record with status 303, body "", headers (dictionary where "Location" is "/")
+    expect router's answer_with(201, "made") is record with status 201, body "made"
+end
+
+to test_files
+    set routes to router's routes()
+    router's files(routes, "/source/", ".")
+    expect asked(routes, "GET", "/source/router.moth") is record with file "./router.moth"
+    expect asked(routes, "GET", "/source/no-such-file.txt")'s status is 404
+    expect asked(routes, "GET", "/source/../secret.txt")'s status is 404
+    expect asked(routes, "GET", "/source/%2E%2E/secret.txt")'s status is 404
+end
+
+to test_mistakes_in_routes
+    set routes to router's routes()
+    for each pair in list of (list of "notes", "a route's path starts with /, as \"/notes/:id\" does, not 'notes'"),
+        (list of "/a/:x/:x", "the route '/a/:x/:x' has x in it twice"),
+        (list of "/a/*rest/b", "in the route '/a/*rest/b', *rest has to be its last part"),
+        (list of "/a/:", "in the route '/a/:', a : needs a name after it")
+        try
+            router's get(routes, item 1 of pair, home)
+            expect no
+        if it fails with why
+            expect why is item 2 of pair
+        end
+    end
+end

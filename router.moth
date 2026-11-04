@@ -1,0 +1,378 @@
+# Routes for a web server made with server.moth: each method and path to a function of the program's, with the
+# parts of the path the route names given to it; 404 for a path no route has, 405 for a method a path doesn't
+# take, files from a folder, redirects, and checks that run before every route. In Moth alone.
+#
+#   use "server.moth" as web
+#   use the package "router" as router
+#
+#   to show_note with request
+#       return "<h1>Note " + item "id" of request's params + "</h1>"
+#   end
+#
+#   set routes to router's routes()
+#   router's get(routes, "/", home)
+#   router's get(routes, "/notes/:id", show_note)         # /notes/42: params is (dictionary where "id" is "42")
+#   router's post(routes, "/notes", add_note)
+#   router's get(routes, "/docs/*page", show_doc)         # the rest of the path, slashes and all
+#   router's files(routes, "/static", "public")           # /static/app.css sends public/app.css
+#   web's serve(8080, router's answerer(routes))
+#
+# A route's function gets the request server.moth made, with `params` added: a dictionary of the parts of the
+# path the route names, decoded (%20 is a space). What it gives back is sent as server.moth sends it.
+#
+# The most particular route a path fits is the one used, whatever order they were added in: /notes/new before
+# /notes/:id, and that before /notes/*rest. A path fits with or without a / at its end. A HEAD request
+# is answered by the GET route. A path that fits routes but not for its method is answered 405, with the
+# methods it takes in its Allow header; one that fits none is answered 404, or by not_found(routes, f)'s f.
+#
+# before(routes, f) runs f(request) before each route's function: when it gives anything but nothing, that is
+# the answer, and the route's function isn't called, which is how to make pages that need a login.
+# redirect(address) is a 303 to another page, and answer_with(status, body) any status with a body.
+
+# an empty table of routes
+to routes
+    return record with kind "routes", all_routes empty list, checks empty list, when_missing nothing
+end
+
+to get with table, pattern, then
+    route(table, "GET", pattern, then)
+end
+
+to post with table, pattern, then
+    route(table, "POST", pattern, then)
+end
+
+to put with table, pattern, then
+    route(table, "PUT", pattern, then)
+end
+
+to patch with table, pattern, then
+    route(table, "PATCH", pattern, then)
+end
+
+to delete with table, pattern, then
+    route(table, "DELETE", pattern, then)
+end
+
+# a route for any method: "GET", "POST", or another; "*" for every one
+to route with table, method, pattern, then
+    set parts to router_pattern(pattern)
+    set kept to table's all_routes
+    add (record with method uppercase of method, pattern pattern, parts parts, rank router_rank(parts), then then)
+        to kept
+end
+
+# a function to run before each route's: what it gives, unless that's nothing, is the answer
+to before with table, check
+    set kept to table's checks
+    add check to kept
+end
+
+# what answers a path no route has, instead of a 404
+to not_found with table, then
+    set table's when_missing to then
+end
+
+# GET under `prefix` sends the files of `folder`: /static/css/app.css is folder/css/app.css; nothing outside
+# the folder can be asked for
+to files with table, prefix, folder
+    set base to folder
+    if length of base is greater than 0 and item (length of base) of base is not "/"
+        set base to base + "/"
+    end
+    set top to router_without_end_slash(prefix)
+    route(table, "GET", top + "/*router_file", function with request gives router_file(request, base))
+end
+
+# a function server.moth's serve can take: each request answered by the routes
+to answerer with table
+    return function with request gives answer(table, request)
+end
+
+# the request answered by the routes
+to answer with table, request
+    set method to uppercase of request's method
+    set path to request's path
+    set question to position of "?" in path
+    if question is greater than 0
+        set path to router_slice(path, 1, question - 1)
+    end
+    set segments to router_segments(path)
+    set best to nothing
+    set best_params to nothing
+    set best_exact to no
+    set methods to empty list
+    for each one in table's all_routes
+        set params to router_fit(one's parts, segments)
+        if params is not nothing
+            if not (one's method is in methods)
+                add one's method to methods
+            end
+            set exact to one's method is method or one's method is "*"
+            if exact or (method is "HEAD" and one's method is "GET")
+                if best is nothing or router_ranks_above(one's rank, best's rank)
+                    or (one's rank is best's rank and exact and not best_exact)
+                    set best to one
+                    set best_params to params
+                    set best_exact to exact
+                end
+            end
+        end
+    end
+    set params of request to best_params
+    if best is nothing
+        set params of request to empty dictionary
+        if length of methods is greater than 0
+            if "GET" is in methods and not ("HEAD" is in methods)
+                add "HEAD" to methods
+            end
+            return record with status 405, body "This page can't be asked for with " + method + ".",
+                headers (dictionary where "Allow" is join methods with ", ")
+        end
+        if table's when_missing is not nothing
+            return router_call(table's when_missing, request)
+        end
+        return record with status 404, body "There's nothing at " + path
+    end
+    for each check in table's checks
+        set said to router_call(check, request)
+        if said is not nothing
+            return said
+        end
+    end
+    return router_call(best's then, request)
+end
+
+to router_call with then, request
+    return then(request)
+end
+
+# a redirect to another page, as after a form is sent: 303, so the browser asks for it with GET
+to redirect with address
+    return record with status 303, body "", headers (dictionary where "Location" is address)
+end
+
+# any status, with text (or bytes) for its body
+to answer_with with status, body
+    return record with status status, body body
+end
+
+# ---------- patterns ----------
+
+# a pattern's parts: records of a kind ("text", "name" or "rest") and the text or name
+to router_pattern with pattern
+    if length of pattern is 0 or item 1 of pattern is not "/"
+        fail with "a route's path starts with /, as \"/notes/:id\" does, not '" + pattern + "'"
+    end
+    set parts to empty list
+    set names to empty list
+    set segments to router_segments(pattern)
+    set k to 1
+    for each segment in segments
+        set part to router_part(pattern, segment)
+        if part's kind is not "text"
+            if part's name is in names
+                fail with "the route '" + pattern + "' has " + part's name + " in it twice"
+            end
+            add part's name to names
+        end
+        if part's kind is "rest" and k is not length of segments
+            fail with "in the route '" + pattern + "', *" + part's name + " has to be its last part"
+        end
+        add part to parts
+        add 1 to k
+    end
+    return parts
+end
+
+# :name for one part of the path, *name for the rest of it
+to router_part with pattern, segment
+    set mark to item 1 of segment
+    if mark is ":" or mark is "*"
+        set name to router_slice(segment, 2, length of segment)
+        if name is ""
+            fail with "in the route '" + pattern + "', a " + mark + " needs a name after it"
+        end
+        if mark is ":"
+            return record with kind "name", name name
+        end
+        return record with kind "rest", name name
+    end
+    return record with kind "text", name segment
+end
+
+# how particular a pattern is, part by part: text 2, a name 1, the rest 0; more parts above fewer
+to router_rank with parts
+    set made to empty list
+    for each part in parts
+        if part's kind is "text"
+            add 2 to made
+        else if part's kind is "name"
+            add 1 to made
+        else
+            add 0 to made
+        end
+    end
+    return made
+end
+
+to router_ranks_above with a, b
+    set k to 1
+    repeat while k is at most length of a and k is at most length of b
+        if item k of a is greater than item k of b
+            return yes
+        else if item k of a is less than item k of b
+            return no
+        end
+        add 1 to k
+    end
+    return length of a is greater than length of b
+end
+
+# the params, if the path's segments fit the pattern's parts, or nothing
+to router_fit with parts, segments
+    set params to empty dictionary
+    set k to 1
+    for each part in parts
+        if part's kind is "rest"
+            if k is greater than length of segments
+                return nothing
+            end
+            set rest to empty list
+            for each j from k to length of segments
+                add router_decoded(item j of segments) to rest
+            end
+            set item part's name of params to join rest with "/"
+            return params
+        end
+        if k is greater than length of segments
+            return nothing
+        end
+        set segment to item k of segments
+        if part's kind is "text"
+            if segment is not part's name
+                return nothing
+            end
+        else
+            set item part's name of params to router_decoded(segment)
+        end
+        add 1 to k
+    end
+    if k is at most length of segments
+        return nothing
+    end
+    return params
+end
+
+# a path's parts between its /s, with none empty
+to router_segments with path
+    set made to empty list
+    for each segment in split path by "/"
+        if segment is not ""
+            add segment to made
+        end
+    end
+    return made
+end
+
+to router_without_end_slash with words
+    set made to words
+    repeat while length of made is greater than 1 and item (length of made) of made is "/"
+        set made to router_slice(made, 1, length of made - 1)
+    end
+    if made is "/"
+        return ""
+    end
+    return made
+end
+
+# ---------- files ----------
+
+to router_file with request, base
+    set asked to item "router_file" of request's params
+    for each segment in split asked by "/"
+        if segment is ".." or segment is "." or position of "\\" in segment is greater than 0
+            return record with status 404, body "There's nothing at " + request's path
+        end
+    end
+    set file to base + asked
+    if not router_is_file(file)
+        return record with status 404, body "There's nothing at " + request's path
+    end
+    return record with file file
+end
+
+# whether there's a file of that name, from its folder's list
+to router_is_file with file
+    set cut to 0
+    set k to 1
+    for each c in file
+        if c is "/"
+            set cut to k
+        end
+        add 1 to k
+    end
+    set folder to "."
+    if cut is greater than 0
+        set folder to router_slice(file, 1, cut)
+    end
+    set name to router_slice(file, cut + 1, length of file)
+    try
+        return name is in (read the folder folder)
+    if it fails
+        return no
+    end
+end
+
+# ---------- text ----------
+
+# %41 as A, and %C3%A9 as é: a path's part decoded
+to router_decoded with words
+    if position of "%" in words is 0
+        return words
+    end
+    set given to words as bytes
+    set size to length of given
+    set made to size bytes
+    set n to 0
+    set k to 1
+    repeat while k is at most length of given
+        set b to byte k of given
+        if b is 37 and k + 2 is at most length of given
+            set high to router_hex(byte (k + 1) of given)
+            set low to router_hex(byte (k + 2) of given)
+            if high is not nothing and low is not nothing
+                add 1 to n
+                set byte n of made to high * 16 + low
+                set k to k + 3
+            else
+                add 1 to n
+                set byte n of made to b
+                add 1 to k
+            end
+        else
+            add 1 to n
+            set byte n of made to b
+            add 1 to k
+        end
+    end
+    return (items 1 to n of made) as text
+end
+
+to router_hex with b
+    if b is at least 48 and b is at most 57
+        return b - 48
+    else if b is at least 65 and b is at most 70
+        return b - 55
+    else if b is at least 97 and b is at most 102
+        return b - 87
+    end
+    return nothing
+end
+
+to router_slice with words, from, upto
+    if from is greater than upto or from is greater than length of words
+        return ""
+    end
+    return items from to upto of words
+end

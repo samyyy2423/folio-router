@@ -1,0 +1,28 @@
+name: test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # the newest Moth, from its releases
+      - name: Get Moth
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            curl -fsSL -o moth.exe https://github.com/samyyy2423/moth/releases/latest/download/moth-windows.exe
+          else
+            curl -fsSL -o moth https://github.com/samyyy2423/moth/releases/latest/download/moth-linux
+            chmod +x moth
+          fi
+      - name: Test
+        shell: bash
+        run: ./moth test router.test.moth --allow-read
+      - name: Tidy
+        shell: bash
+        run: ./moth tidy --check router.moth router.test.moth
