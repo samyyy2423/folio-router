@@ -1,16 +1,16 @@
 # router
 
-Routes for a [Moth](https://github.com/samyyy2423/moth) web server made with `server.moth`: each method and
+Routes for a [Folio](https://github.com/samyyy2423/folio) web server made with `server.folio`: each method and
 path to a function of the program's, with the parts of the path the route names given to it. 404 for a path
 no route has, 405 for a method a path doesn't take, files from a folder, redirects, and checks that run before
-every route, such as a login. In Moth alone.
+every route, such as a login. In Folio alone.
 
 ```text
-moth add router
+folio add router
 ```
 
 ```
-use "server.moth" as web
+use "server.folio" as web
 use the package "router" as router
 
 to home with request
@@ -34,7 +34,7 @@ router's files(routes, "/static", "public")         # /static/app.css sends publ
 web's serve(8080, router's answerer(routes))
 ```
 
-Build it with `moth build app.moth --allow-libraries --allow-read`, as any server.
+Build it with `folio build app.folio --allow-libraries --allow-read`, as any server.
 
 ## What it has
 
@@ -46,7 +46,7 @@ Build it with `moth build app.moth --allow-libraries --allow-read`, as any serve
 | `files(routes, prefix, folder)` | GET under `prefix` sends `folder`'s files; nothing outside the folder can be asked for |
 | `before(routes, f)` | `f(request)` runs before each route's function; when it gives anything but `nothing`, that's the answer |
 | `not_found(routes, f)` | what answers a path no route has, instead of a 404 |
-| `answerer(routes)` | a function `server.moth`'s `serve` takes |
+| `answerer(routes)` | a function `server.folio`'s `serve` takes |
 | `answer(routes, request)` | one request answered, as `serve` would: handy in tests |
 | `redirect(address)` | a 303 to another page, as after a form is sent |
 | `answer_with(status, body)` | any status, with a body |
@@ -75,9 +75,9 @@ router's before(routes, logged_in_only)
 ## Tests
 
 ```text
-moth test router.test.moth --allow-read
+folio test router.test.folio --allow-read
 ```
 
 ## License
 
-Apache License 2.0, as Moth is: see [LICENSE](LICENSE).
+Apache License 2.0, as Folio is: see [LICENSE](LICENSE).

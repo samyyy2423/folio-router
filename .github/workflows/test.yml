@@ -10,19 +10,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # the newest Moth, from its releases
-      - name: Get Moth
+      # the newest Folio, from its releases
+      - name: Get Folio
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            curl -fsSL -o moth.exe https://github.com/samyyy2423/moth/releases/latest/download/moth-windows.exe
+            curl -fsSL -o folio.exe https://github.com/samyyy2423/folio/releases/latest/download/folio-windows.exe
           else
-            curl -fsSL -o moth https://github.com/samyyy2423/moth/releases/latest/download/moth-linux
-            chmod +x moth
+            curl -fsSL -o folio https://github.com/samyyy2423/folio/releases/latest/download/folio-linux
+            chmod +x folio
           fi
       - name: Test
         shell: bash
-        run: ./moth test router.test.moth --allow-read
+        run: ./folio test --allow-read router.test.folio # files() looks for the files it serves
       - name: Tidy
         shell: bash
-        run: ./moth tidy --check router.moth router.test.moth
+        run: ./folio tidy --check router.folio router.test.folio

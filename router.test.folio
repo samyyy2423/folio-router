@@ -1,8 +1,8 @@
-# router.moth's tests: moth test router.test.moth --allow-read
+# router.folio's tests: folio test router.test.folio --allow-read
 
-use "router.moth" as router
+use "router.folio" as router
 
-# a request as server.moth makes one
+# a request as server.folio makes one
 to request with method, path
     return record with method method, path path, query empty dictionary, headers empty dictionary, body ""
 end
@@ -137,7 +137,7 @@ end
 to test_files
     set routes to router's routes()
     router's files(routes, "/source/", ".")
-    expect asked(routes, "GET", "/source/router.moth") is record with file "./router.moth"
+    expect asked(routes, "GET", "/source/router.folio") is record with file "./router.folio"
     expect asked(routes, "GET", "/source/no-such-file.txt")'s status is 404
     expect asked(routes, "GET", "/source/../secret.txt")'s status is 404
     expect asked(routes, "GET", "/source/%2E%2E/secret.txt")'s status is 404

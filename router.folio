@@ -1,8 +1,8 @@
-# Routes for a web server made with server.moth: each method and path to a function of the program's, with the
+# Routes for a web server made with server.folio: each method and path to a function of the program's, with the
 # parts of the path the route names given to it; 404 for a path no route has, 405 for a method a path doesn't
-# take, files from a folder, redirects, and checks that run before every route. In Moth alone.
+# take, files from a folder, redirects, and checks that run before every route. In Folio alone.
 #
-#   use "server.moth" as web
+#   use "server.folio" as web
 #   use the package "router" as router
 #
 #   to show_note with request
@@ -17,8 +17,8 @@
 #   router's files(routes, "/static", "public")           # /static/app.css sends public/app.css
 #   web's serve(8080, router's answerer(routes))
 #
-# A route's function gets the request server.moth made, with `params` added: a dictionary of the parts of the
-# path the route names, decoded (%20 is a space). What it gives back is sent as server.moth sends it.
+# A route's function gets the request server.folio made, with `params` added: a dictionary of the parts of the
+# path the route names, decoded (%20 is a space). What it gives back is sent as server.folio sends it.
 #
 # The most particular route a path fits is the one used, whatever order they were added in: /notes/new before
 # /notes/:id, and that before /notes/*rest. A path fits with or without a / at its end. A HEAD request
@@ -84,7 +84,7 @@ to files with table, prefix, folder
     route(table, "GET", top + "/*router_file", function with request gives router_file(request, base))
 end
 
-# a function server.moth's serve can take: each request answered by the routes
+# a function server.folio's serve can take: each request answered by the routes
 to answerer with table
     return function with request gives answer(table, request)
 end
